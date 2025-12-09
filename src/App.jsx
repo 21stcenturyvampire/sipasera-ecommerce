@@ -175,7 +175,7 @@ function LoginPage({ onLogin }) {
         </div>
         <div className="mt-6 text-center text-sm text-slate-600">
           <p>Demo: admin@sipasera.com / admin</p>
-          <p>Demo: warung1@example.com / user</p>
+          <p>Demo: kelompok1@mail.com / user</p>
         </div>
       </div>
     </div>
