@@ -8,7 +8,7 @@ export default function SipaseraApp() {
   
   const [users] = useState([
     { user_id: 1, name: 'Admin Sipasera', email: 'admin@sipasera.com', password: 'admin', role: 'admin' },
-    { user_id: 2, name: 'Warung Maju Jaya', email: 'kelompok1@mail.com', password: 'user', role: 'user' },
+    { user_id: 2, name: 'Warung Kelompok 1', email: 'kelompok1@mail.com', password: 'user', role: 'user' },
     { user_id: 3, name: 'Toko Berkah', email: 'warung@example.com', password: 'user', role: 'user' }
   ]);
 
@@ -37,13 +37,13 @@ export default function SipaseraApp() {
     }
     return false;
   };
-
+    
   const addToCart = (product) => {
     const existing = cart.find(c => c.product_id === product.product_id);
     if (existing) {
       setCart(cart.map(c => c.product_id === product.product_id ? {...c, quantity: c.quantity + 1} : c));
     } else {
-      setCart([...cart, { ...product, quantity: 1 }]);
+      setCart([...cart,  { ...product, quantity: 1 }]);
     }
   };
 
