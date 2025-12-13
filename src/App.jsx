@@ -1,49 +1,113 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ShoppingCart, Package, Users, CreditCard, FileText, LogOut, Menu, X, Plus, Edit2, Trash2, Check, XCircle, Search } from 'lucide-react';
+import { supabase } from './supabaseClient';
 
 export default function SipaseraApp() {
   const [currentUser, setCurrentUser] = useState(null);
   const [currentPage, setCurrentPage] = useState('login');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [loading, setLoading] = useState(false);
   
-  const [users] = useState([
-    { user_id: 1, name: 'Admin Sipasera', email: 'admin@sipasera.com', password: 'admin', role: 'admin' },
-    { user_id: 2, name: 'Warung Kelompok 1', email: 'kelompok1@mail.com', password: 'user', role: 'user' },
-    { user_id: 3, name: 'Toko Berkah', email: 'warung@example.com', password: 'user', role: 'user' }
-  ]);
-
-  const [products, setProducts] = useState([
-    { product_id: 1, name: 'Beras Premium 5kg', description: 'Beras berkualitas tinggi', price: 75000, stock: 100, image_url: '🌾' },
-    { product_id: 2, name: 'Minyak Goreng 2L', description: 'Minyak goreng murni', price: 35000, stock: 150, image_url: '🛢️' },
-    { product_id: 3, name: 'Gula Pasir 1kg', description: 'Gula pasir putih', price: 15000, stock: 200, image_url: '🍚' },
-    { product_id: 4, name: 'Telur Ayam 1kg', description: 'Telur segar pilihan', price: 28000, stock: 80, image_url: '🥚' }
-  ]);
-
+  const [users, setUsers] = useState([]);
+  const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [cart, setCart] = useState([]);
-  const [creditLimits, setCreditLimits] = useState([
-    { user_id: 2, credit_limit: 5000000, used_credit: 1500000 },
-    { user_id: 3, credit_limit: 3000000, used_credit: 500000 }
-  ]);
-
+  const [creditLimits, setCreditLimits] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const handleLogin = (email, password) => {
-    const user = users.find(u => u.email === email && u.password === password);
-    if (user) {
-      setCurrentUser(user);
-      setCurrentPage(user.role === 'admin' ? 'dashboard' : 'products');
-      return true;
-    }
-    return false;
-  };
+  // Fetch data dari Supabase saat pertama kali load
+  useEffect(() => {
+    fetchProducts();
+    fetchUsers();
+    fetchCreditLimits();
+  }, []);
+
+  // Fetch products dari Supabase
+  const fetchProducts = async () => {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('product_id', { ascending: true });
     
+    if (error) {
+      console.error('Error fetching products:', error);
+    } else {
+      setProducts(data || []);
+    }
+  };
+
+  // Fetch users dari Supabase
+  const fetchUsers = async () => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('user_id', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching users:', error);
+    } else {
+      setUsers(data || []);
+    }
+  };
+
+  // Fetch credit limits dari Supabase
+  const fetchCreditLimits = async () => {
+    const { data, error } = await supabase
+      .from('user_credit_limit')
+      .select('*');
+    
+    if (error) {
+      console.error('Error fetching credit limits:', error);
+    } else {
+      setCreditLimits(data || []);
+    }
+  };
+
+  // Fetch orders dari Supabase
+  const fetchOrders = async () => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching orders:', error);
+    } else {
+      setOrders(data || []);
+    }
+  };
+
+  const handleLogin = async (email, password) => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .eq('password', password)
+      .single();
+    
+    setLoading(false);
+    
+    if (error || !data) {
+      return false;
+    }
+    
+    setCurrentUser(data);
+    setCurrentPage(data.role === 'admin' ? 'dashboard' : 'products');
+    if (data.role !== 'admin') {
+      fetchOrders();
+    } else {
+      fetchOrders();
+    }
+    return true;
+  };
+
   const addToCart = (product) => {
     const existing = cart.find(c => c.product_id === product.product_id);
     if (existing) {
       setCart(cart.map(c => c.product_id === product.product_id ? {...c, quantity: c.quantity + 1} : c));
     } else {
-      setCart([...cart,  { ...product, quantity: 1 }]);
+      setCart([...cart, { ...product, quantity: 1 }]);
     }
   };
 
@@ -55,7 +119,7 @@ export default function SipaseraApp() {
     }
   };
 
-  const handleCheckout = (paymentMethod) => {
+  const handleCheckout = async (paymentMethod) => {
     const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     const userCredit = creditLimits.find(c => c.user_id === currentUser.user_id);
     
@@ -71,37 +135,73 @@ export default function SipaseraApp() {
       }
     }
 
-    const newOrder = {
-      order_id: Date.now(),
-      user_id: currentUser.user_id,
-      total_amount: totalAmount,
-      payment_method: paymentMethod,
-      status: paymentMethod === 'cash' ? 'completed' : 'pending',
-      created_at: new Date().toISOString(),
-      items: cart
-    };
+    setLoading(true);
 
-    setOrders([...orders, newOrder]);
+    // Insert order ke Supabase
+    const { data: orderData, error: orderError } = await supabase
+      .from('orders')
+      .insert([{
+        user_id: currentUser.user_id,
+        total_amount: totalAmount,
+        payment_method: paymentMethod,
+        status: paymentMethod === 'cash' ? 'completed' : 'pending'
+      }])
+      .select()
+      .single();
 
-    cart.forEach(item => {
-      setProducts(products.map(p => 
-        p.product_id === item.product_id ? {...p, stock: p.stock - item.quantity} : p
-      ));
-    });
-
-    if (paymentMethod === 'paylater' && userCredit) {
-      setCreditLimits(creditLimits.map(c => 
-        c.user_id === currentUser.user_id ? {...c, used_credit: c.used_credit + totalAmount} : c
-      ));
+    if (orderError) {
+      console.error('Error creating order:', orderError);
+      alert('Gagal membuat pesanan!');
+      setLoading(false);
+      return;
     }
 
+    // Insert order items
+    const orderItems = cart.map(item => ({
+      order_id: orderData.order_id,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      price: item.price
+    }));
+
+    await supabase.from('order_items').insert(orderItems);
+
+    // Update stock produk
+    for (const item of cart) {
+      const product = products.find(p => p.product_id === item.product_id);
+      await supabase
+        .from('products')
+        .update({ stock: product.stock - item.quantity })
+        .eq('product_id', item.product_id);
+    }
+
+    // Update credit jika paylater
+    if (paymentMethod === 'paylater' && userCredit) {
+      await supabase
+        .from('user_credit_limit')
+        .update({ used_credit: userCredit.used_credit + totalAmount })
+        .eq('user_id', currentUser.user_id);
+      
+      fetchCreditLimits();
+    }
+
+    // Insert financial report
+    await supabase.from('financial_report').insert([{
+      report_type: 'income',
+      description: `Order #${orderData.order_id} - ${currentUser.name}`,
+      amount: totalAmount
+    }]);
+
     setCart([]);
+    fetchProducts();
+    fetchOrders();
+    setLoading(false);
     alert('Pesanan berhasil dibuat!');
     setCurrentPage('orders');
   };
 
   if (currentPage === 'login') {
-    return <LoginPage onLogin={handleLogin} />;
+    return <LoginPage onLogin={handleLogin} loading={loading} />;
   }
 
   const menuItems = currentUser?.role === 'admin' ? [
@@ -141,18 +241,37 @@ export default function SipaseraApp() {
       </div>
 
       <div className="flex-1 overflow-auto">
+        {loading && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-4 text-slate-600">Loading...</p>
+            </div>
+          </div>
+        )}
         {currentPage === 'dashboard' && <DashboardPage products={products} orders={orders} creditLimits={creditLimits} />}
-        {currentPage === 'products' && <ProductsPage products={products} currentUser={currentUser} searchTerm={searchTerm} setSearchTerm={setSearchTerm} addToCart={addToCart} setProducts={setProducts} />}
+        {currentPage === 'products' && <ProductsPage products={products} currentUser={currentUser} searchTerm={searchTerm} setSearchTerm={setSearchTerm} addToCart={addToCart} fetchProducts={fetchProducts} />}
         {currentPage === 'cart' && <CartPage cart={cart} updateCartQuantity={updateCartQuantity} creditLimits={creditLimits} currentUser={currentUser} handleCheckout={handleCheckout} />}
-        {currentPage === 'orders' && <OrdersPage orders={orders} users={users} currentUser={currentUser} setOrders={setOrders} />}
+        {currentPage === 'orders' && <OrdersPage orders={orders} users={users} currentUser={currentUser} fetchOrders={fetchOrders} />}
       </div>
     </div>
   );
 }
 
-function LoginPage({ onLogin }) {
+function LoginPage({ onLogin, loading }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  const handleSubmit = async () => {
+    if (!email || !password) {
+      alert('Email dan password harus diisi!');
+      return;
+    }
+    const success = await onLogin(email, password);
+    if (!success) {
+      alert('Email atau password salah!');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
@@ -165,13 +284,15 @@ function LoginPage({ onLogin }) {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" required />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSubmit()} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="email@example.com" />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" required />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSubmit()} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="••••••••" />
           </div>
-          <button onClick={(e) => { e.preventDefault(); if (!onLogin(email, password)) alert('Email atau password salah!'); }} className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700">Masuk</button>
+          <button onClick={handleSubmit} disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:bg-slate-400">
+            {loading ? 'Loading...' : 'Masuk'}
+          </button>
         </div>
         <div className="mt-6 text-center text-sm text-slate-600">
           <p>Demo: admin@sipasera.com / admin</p>
@@ -183,8 +304,8 @@ function LoginPage({ onLogin }) {
 }
 
 function DashboardPage({ products, orders, creditLimits }) {
-  const totalRevenue = orders.reduce((sum, o) => sum + o.total_amount, 0);
-  const totalCredit = creditLimits.reduce((sum, c) => sum + c.used_credit, 0);
+  const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0);
+  const totalCredit = creditLimits.reduce((sum, c) => sum + parseFloat(c.used_credit || 0), 0);
 
   return (
     <div className="p-6">
@@ -231,19 +352,57 @@ function DashboardPage({ products, orders, creditLimits }) {
   );
 }
 
-function ProductsPage({ products, currentUser, searchTerm, setSearchTerm, addToCart, setProducts }) {
+function ProductsPage({ products, currentUser, searchTerm, setSearchTerm, addToCart, fetchProducts }) {
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const filtered = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  const handleSave = (formData) => {
+  const handleSave = async (formData) => {
     if (editingProduct) {
-      setProducts(products.map(p => p.product_id === editingProduct.product_id ? {...p, ...formData} : p));
+      const { error } = await supabase
+        .from('products')
+        .update(formData)
+        .eq('product_id', editingProduct.product_id);
+      
+      if (error) {
+        alert('Gagal update produk!');
+        console.error(error);
+      } else {
+        alert('Produk berhasil diupdate!');
+      }
     } else {
-      setProducts([...products, { ...formData, product_id: Date.now() }]);
+      const { error } = await supabase
+        .from('products')
+        .insert([formData]);
+      
+      if (error) {
+        alert('Gagal menambah produk!');
+        console.error(error);
+      } else {
+        alert('Produk berhasil ditambahkan!');
+      }
     }
+    
+    fetchProducts();
     setShowModal(false);
     setEditingProduct(null);
+  };
+
+  const handleDelete = async (productId) => {
+    if (!window.confirm('Hapus produk ini?')) return;
+    
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('product_id', productId);
+    
+    if (error) {
+      alert('Gagal menghapus produk!');
+      console.error(error);
+    } else {
+      alert('Produk berhasil dihapus!');
+      fetchProducts();
+    }
   };
 
   return (
@@ -272,7 +431,7 @@ function ProductsPage({ products, currentUser, searchTerm, setSearchTerm, addToC
               <h3 className="font-semibold text-lg text-slate-800 mb-1">{product.name}</h3>
               <p className="text-sm text-slate-600 mb-3">{product.description}</p>
               <div className="flex justify-between items-center mb-3">
-                <span className="text-xl font-bold text-blue-600">Rp {product.price.toLocaleString()}</span>
+                <span className="text-xl font-bold text-blue-600">Rp {parseFloat(product.price).toLocaleString()}</span>
                 <span className="text-sm text-slate-500">Stok: {product.stock}</span>
               </div>
               {currentUser?.role === 'admin' ? (
@@ -280,7 +439,7 @@ function ProductsPage({ products, currentUser, searchTerm, setSearchTerm, addToC
                   <button onClick={() => { setEditingProduct(product); setShowModal(true); }} className="flex-1 bg-blue-50 text-blue-600 px-3 py-2 rounded-lg hover:bg-blue-100 flex items-center justify-center gap-2">
                     <Edit2 size={16} /> Edit
                   </button>
-                  <button onClick={() => { if (window.confirm('Hapus produk ini?')) setProducts(products.filter(p => p.product_id !== product.product_id)); }} className="flex-1 bg-red-50 text-red-600 px-3 py-2 rounded-lg hover:bg-red-100 flex items-center justify-center gap-2">
+                  <button onClick={() => handleDelete(product.product_id)} className="flex-1 bg-red-50 text-red-600 px-3 py-2 rounded-lg hover:bg-red-100 flex items-center justify-center gap-2">
                     <Trash2 size={16} /> Hapus
                   </button>
                 </div>
@@ -323,9 +482,9 @@ function ProductModal({ product, onSave, onClose }) {
 }
 
 function CartPage({ cart, updateCartQuantity, creditLimits, currentUser, handleCheckout }) {
-  const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const total = cart.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0);
   const userCredit = creditLimits.find(c => c.user_id === currentUser.user_id);
-  const availableCredit = userCredit ? userCredit.credit_limit - userCredit.used_credit : 0;
+  const availableCredit = userCredit ? parseFloat(userCredit.credit_limit) - parseFloat(userCredit.used_credit) : 0;
 
   return (
     <div className="p-6">
@@ -344,7 +503,7 @@ function CartPage({ cart, updateCartQuantity, creditLimits, currentUser, handleC
                 <div className="text-4xl">{item.image_url}</div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-slate-800">{item.name}</h3>
-                  <p className="text-blue-600 font-semibold">Rp {item.price.toLocaleString()}</p>
+                  <p className="text-blue-600 font-semibold">Rp {parseFloat(item.price).toLocaleString()}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button onClick={() => updateCartQuantity(item.product_id, item.quantity - 1)} className="w-8 h-8 bg-slate-100 rounded-lg hover:bg-slate-200">-</button>
@@ -369,11 +528,11 @@ function CartPage({ cart, updateCartQuantity, creditLimits, currentUser, handleC
                 <div className="border-t pt-3">
                   <div className="flex justify-between text-sm text-slate-600 mb-1">
                     <span>Limit Kredit</span>
-                    <span>Rp {userCredit.credit_limit.toLocaleString()}</span>
+                    <span>Rp {parseFloat(userCredit.credit_limit).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-sm text-slate-600 mb-1">
                     <span>Terpakai</span>
-                    <span>Rp {userCredit.used_credit.toLocaleString()}</span>
+                    <span>Rp {parseFloat(userCredit.used_credit).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-sm font-semibold text-green-600">
                     <span>Tersedia</span>
@@ -393,7 +552,40 @@ function CartPage({ cart, updateCartQuantity, creditLimits, currentUser, handleC
   );
 }
 
-function OrdersPage({ orders, users, currentUser, setOrders }) {
+function OrdersPage({ orders, users, currentUser, fetchOrders }) {
+  const [orderItems, setOrderItems] = useState({});
+
+  useEffect(() => {
+    fetchAllOrderItems();
+  }, [orders]);
+
+  const fetchAllOrderItems = async () => {
+    const items = {};
+    for (const order of orders) {
+      const { data } = await supabase
+        .from('order_items')
+        .select('*, products(*)')
+        .eq('order_id', order.order_id);
+      items[order.order_id] = data || [];
+    }
+    setOrderItems(items);
+  };
+
+  const handleUpdateStatus = async (orderId, newStatus) => {
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: newStatus })
+      .eq('order_id', orderId);
+    
+    if (error) {
+      alert('Gagal update status!');
+      console.error(error);
+    } else {
+      alert('Status berhasil diupdate!');
+      fetchOrders();
+    }
+  };
+
   const userOrders = currentUser?.role === 'admin' ? orders : orders.filter(o => o.user_id === currentUser.user_id);
 
   return (
@@ -409,6 +601,7 @@ function OrdersPage({ orders, users, currentUser, setOrders }) {
         ) : (
           userOrders.map(order => {
             const user = users.find(u => u.user_id === order.user_id);
+            const items = orderItems[order.order_id] || [];
             
             return (
               <div key={order.order_id} className="bg-white rounded-xl shadow-sm p-6">
@@ -419,7 +612,7 @@ function OrdersPage({ orders, users, currentUser, setOrders }) {
                     <p className="text-sm text-slate-500">{new Date(order.created_at).toLocaleDateString('id-ID')}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xl font-bold text-blue-600">Rp {order.total_amount.toLocaleString()}</p>
+                    <p className="text-xl font-bold text-blue-600">Rp {parseFloat(order.total_amount).toLocaleString()}</p>
                     <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium mt-2 ${
                       order.status === 'completed' ? 'bg-green-100 text-green-700' :
                       order.status === 'approved' ? 'bg-blue-100 text-blue-700' :
@@ -431,13 +624,13 @@ function OrdersPage({ orders, users, currentUser, setOrders }) {
                   </div>
                 </div>
                 
-                {order.items && (
+                {items.length > 0 && (
                   <div className="border-t pt-4">
                     <p className="text-sm font-medium text-slate-700 mb-2">Item Pesanan:</p>
-                    {order.items.map((item, idx) => (
+                    {items.map((item, idx) => (
                       <div key={idx} className="flex justify-between text-sm text-slate-600 mb-1">
-                        <span>{item.name} x{item.quantity}</span>
-                        <span>Rp {(item.price * item.quantity).toLocaleString()}</span>
+                        <span>{item.products?.name} x{item.quantity}</span>
+                        <span>Rp {(parseFloat(item.price) * item.quantity).toLocaleString()}</span>
                       </div>
                     ))}
                   </div>
@@ -445,10 +638,10 @@ function OrdersPage({ orders, users, currentUser, setOrders }) {
 
                 {currentUser?.role === 'admin' && order.status === 'pending' && (
                   <div className="flex gap-2 mt-4">
-                    <button onClick={() => setOrders(orders.map(o => o.order_id === order.order_id ? {...o, status: 'approved'} : o))} className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2">
+                    <button onClick={() => handleUpdateStatus(order.order_id, 'approved')} className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2">
                       <Check size={16} /> Setujui
                     </button>
-                    <button onClick={() => setOrders(orders.map(o => o.order_id === order.order_id ? {...o, status: 'rejected'} : o))} className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex items-center justify-center gap-2">
+                    <button onClick={() => handleUpdateStatus(order.order_id, 'rejected')} className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex items-center justify-center gap-2">
                       <XCircle size={16} /> Tolak
                     </button>
                   </div>
