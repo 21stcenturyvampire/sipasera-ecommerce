@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Package, Users, CreditCard, FileText, LogOut, Menu, X, Plus, Edit2, Trash2, Check, XCircle, Search, TrendingUp, TrendingDown, DollarSign, AlertCircle, User, Bell, Truck, Briefcase } from 'lucide-react';
+import { ShoppingCart, Package, Users, CreditCard, FileText, LogOut, Menu, X, Plus, Edit2, Trash2, Check, XCircle, Search, TrendingUp, TrendingDown, DollarSign, AlertCircle, User, Bell, Truck, Briefcase, ClipboardList, Receipt, ListOrdered } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 export default function SipaseraApp() {
@@ -275,8 +275,8 @@ export default function SipaseraApp() {
   ] : [
     { id: 'products', icon: Package, label: 'Produk' },
     { id: 'cart', icon: ShoppingCart, label: 'Keranjang', badge: cart.length },
-    { id: 'orders', icon: ShoppingCart, label: 'Pesanan Saya' },
-    { id: 'billing', icon: DollarSign, label: 'Penagihan' },
+    { id: 'orders', icon: ClipboardList, label: 'Pesanan Saya' },
+    { id: 'billing', icon: Receipt, label: 'Penagihan' },
     { id: 'profile', icon: User, label: 'Profile' }
   ];
 
