@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShoppingCart, Package, Users, CreditCard, FileText, LogOut, 
-  Menu, X, ClipboardList, Receipt, User, Briefcase 
+  Menu, X, ClipboardList, Receipt, User, Briefcase, 
+  FileBarChart,
+  LayoutDashboard
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
@@ -357,12 +359,12 @@ export default function SipaseraApp() {
   }
 
   const menuItems = currentUser?.role === 'admin' ? [
-    { id: 'dashboard', icon: FileText, label: 'Dashboard' },
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'products', icon: Package, label: 'Produk' },
     { id: 'orders', icon: ShoppingCart, label: 'Pesanan' },
     { id: 'paylater-approval', icon: CreditCard, label: 'Approval Paylater' },
     { id: 'operational', icon: Briefcase, label: 'Operasional' },
-    { id: 'reports', icon: FileText, label: 'Laporan Keuangan' }
+    { id: 'reports', icon: FileBarChart, label: 'Laporan Keuangan' }
   ] : [
     { id: 'products', icon: Package, label: 'Produk' },
     { id: 'cart', icon: ShoppingCart, label: 'Keranjang', badge: cart.length },
