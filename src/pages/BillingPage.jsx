@@ -10,6 +10,7 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
     o.status !== 'paid'
   );
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('transfer');
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   const handlePayment = async () => {
@@ -30,7 +31,7 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
       user_id: currentUser.user_id,
       order_id: selectedOrder.order_id,
       amount: amount,
-      method: 'transfer',
+      method: paymentMethod,
       note: `Pembayaran Order #${selectedOrder.order_id}`
     }]);
 
@@ -65,6 +66,7 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
     showFlash('Pembayaran berhasil!', 'success');
     setSelectedOrder(null);
     setPaymentAmount('');
+    setPaymentMethod('transfer');
   };
 
   const getDaysRemaining = (dueDate) => {
@@ -179,7 +181,10 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
       {selectedOrder && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" 
-          onClick={() => setSelectedOrder(null)}
+          onClick={() => {
+            setSelectedOrder(null);
+            setPaymentMethod('transfer');
+          }}
         >
           <div className="bg-white rounded-xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-xl font-bold mb-4">Bayar Tagihan</h2>
@@ -195,6 +200,20 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Metode Pembayaran
+                </label>
+                <select 
+                  value={paymentMethod} 
+                  onChange={(e) => setPaymentMethod(e.target.value)} 
+                  className="w-full px-4 py-2 border rounded-lg"
+                >
+                  <option value="transfer">Transfer Bank</option>
+                  <option value="cash">Tunai</option>
+                  <option value="e-wallet">E-Wallet</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
                   Jumlah Bayar (Rp)
                 </label>
                 <input 
@@ -204,16 +223,25 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
                   placeholder={getRemainingAmount(selectedOrder).toLocaleString()} 
                   className="w-full px-4 py-2 border rounded-lg" 
                 />
+                {paymentAmount && parseFloat(paymentAmount) > getRemainingAmount(selectedOrder) && (
+                  <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
+                    <span>⚠️</span> Nominal pembayaran melebihi sisa tagihan!
+                  </p>
+                )}
               </div>
               <div className="flex gap-2">
                 <button 
-                  onClick={handlePayment} 
-                  className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
+                  onClick={handlePayment}
+                  disabled={!paymentAmount || parseFloat(paymentAmount) <= 0 || parseFloat(paymentAmount) > getRemainingAmount(selectedOrder)}
+                  className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
                 >
                   Bayar
                 </button>
                 <button 
-                  onClick={() => setSelectedOrder(null)} 
+                  onClick={() => {
+                    setSelectedOrder(null);
+                    setPaymentMethod('transfer');
+                  }} 
                   className="flex-1 bg-slate-200 py-2 rounded-lg hover:bg-slate-300"
                 >
                   Batal
