@@ -58,9 +58,6 @@ export function LoginPage({ onLogin, onRegister, loading }) {
             Daftar Akun Baru
           </button>
         </div>
-        <div className="mt-6 text-center text-sm text-slate-600">
-          <p>Demo: admin@sipasera.com / admin</p>
-        </div>
       </div>
     </div>
   );
