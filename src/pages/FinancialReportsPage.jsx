@@ -14,7 +14,7 @@ export function FinancialReportsPage({ reports, orders, fetchReports }) {
   const filteredReports = reports.filter(r => {
     if (filter !== 'all' && r.report_type !== filter) return false;
     
-    // Convert dates to start of day for accurate comparison
+    
     const reportDate = new Date(r.created_at);
     reportDate.setHours(0, 0, 0, 0);
     
@@ -26,25 +26,25 @@ export function FinancialReportsPage({ reports, orders, fetchReports }) {
     
     if (endDate) {
       const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999); // Set to end of day to include the end date
+      end.setHours(23, 59, 59, 999); 
       if (reportDate > end) return false;
     }
     
     return true;
   });
 
-  // Sort reports based on selected option
+  
   const sortedReports = [...filteredReports].sort((a, b) => {
     if (sortBy === 'amount-asc') {
       return parseFloat(a.amount) - parseFloat(b.amount);
     } else if (sortBy === 'amount-desc') {
       return parseFloat(b.amount) - parseFloat(a.amount);
     }
-    // Default: sort by date (newest first)
+  
     return new Date(b.created_at) - new Date(a.created_at);
   });
 
-  // Calculate totals from FILTERED reports
+  
   const totalIncome = filteredReports
     .filter(r => r.report_type === 'income')
     .reduce((sum, r) => sum + parseFloat(r.amount), 0);
@@ -55,7 +55,6 @@ export function FinancialReportsPage({ reports, orders, fetchReports }) {
   
   const netProfit = totalIncome - totalExpense;
 
-  // Calculate COGS (Cost of Goods Sold) from operational expenses
   const cogs = filteredReports
     .filter(r => r.report_type === 'expense' && 
                  (r.description.includes('PEMBELIAN_STOK') || 
@@ -63,10 +62,8 @@ export function FinancialReportsPage({ reports, orders, fetchReports }) {
                   r.description.toLowerCase().includes('pembelian')))
     .reduce((sum, r) => sum + parseFloat(r.amount), 0);
 
-  // Gross Profit = Total Income - COGS
   const grossProfit = totalIncome - cogs;
 
-  // Operating Expenses (non-COGS expenses)
   const operatingExpenses = totalExpense - cogs;
 
   return (
