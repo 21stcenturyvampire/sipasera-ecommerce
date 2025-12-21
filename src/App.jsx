@@ -26,7 +26,7 @@ export default function SipaseraApp() {
   const [currentUser, setCurrentUser] = useState(null);
   const [currentPage, setCurrentPage] = useState('login');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [flashMessage, setFlashMessage] = useState(null);
   const [notifications, setNotifications] = useState([]);
   
@@ -39,6 +39,49 @@ export default function SipaseraApp() {
   const [paylaterApps, setPaylaterApps] = useState([]);
   const [operationalExpenses, setOperationalExpenses] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Check session on app load
+  useEffect(() => {
+    const savedUser = localStorage.getItem('currentUser');
+    const savedCart = localStorage.getItem('cart');
+    
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      setCurrentUser(user);
+      setCurrentPage(user.role === 'admin' ? 'dashboard' : 'products');
+      if (savedCart) {
+        setCart(JSON.parse(savedCart));
+      }
+      fetchProducts();
+      fetchUsers();
+      fetchCreditLimits();
+      fetchOrders();
+      if (user.role === 'admin') {
+        fetchFinancialReports();
+        fetchPaylaterApps();
+        fetchOperationalExpenses();
+      }
+    }
+    setLoading(false);
+  }, []);
+
+  // Save user session to localStorage
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('currentUser', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('currentUser');
+    }
+  }, [currentUser]);
+
+  // Save cart to localStorage
+  useEffect(() => {
+    if (cart.length > 0) {
+      localStorage.setItem('cart', JSON.stringify(cart));
+    } else {
+      localStorage.removeItem('cart');
+    }
+  }, [cart]);
 
   useEffect(() => {
     fetchProducts();
@@ -213,6 +256,15 @@ export default function SipaseraApp() {
     return true;
   };
 
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setCurrentPage('login');
+    setCart([]);
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('cart');
+    showFlash('Berhasil logout', 'info');
+  };
+
   const addToCart = (product) => {
     const existing = cart.find(c => c.product_id === product.product_id);
     if (existing) {
@@ -338,6 +390,10 @@ export default function SipaseraApp() {
     setCurrentPage('orders');
   };
 
+  if (loading) {
+    return <LoadingOverlay />;
+  }
+
   if (currentPage === 'login') {
     return (
       <LoginPage 
@@ -423,12 +479,7 @@ export default function SipaseraApp() {
         </nav>
         <div className="p-4 border-t border-slate-200">
           <button 
-            onClick={() => { 
-              setCurrentUser(null); 
-              setCurrentPage('login'); 
-              setCart([]); 
-              showFlash('Berhasil logout', 'info'); 
-            }} 
+            onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition"
           >
             <LogOut size={20} />

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Plus, Edit2, Trash2, Upload } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export function ProductsPage({ products, currentUser, searchTerm, setSearchTerm, addToCart, fetchProducts, showFlash }) {
@@ -82,17 +82,7 @@ export function ProductsPage({ products, currentUser, searchTerm, setSearchTerm,
             key={product.product_id} 
             className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition"
           >
-            <div className="w-full h-40 bg-slate-50 text-center overflow-hidden">
-              {product.image_url ? (
-                <img 
-                  src={product.image_url} 
-                  alt={product.name} 
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-4xl">📦</div>
-              )}
-            </div>
+            <div className="text-6xl p-6 bg-slate-50 text-center">{product.image_url}</div>
             <div className="p-4">
               <h3 className="font-semibold text-lg text-slate-800 mb-1">{product.name}</h3>
               <p className="text-sm text-slate-600 mb-3">{product.description}</p>
@@ -136,90 +126,16 @@ export function ProductsPage({ products, currentUser, searchTerm, setSearchTerm,
           product={editingProduct} 
           onSave={handleSave} 
           onClose={() => { setShowModal(false); setEditingProduct(null); }} 
-          showFlash={showFlash}
         />
       )}
     </div>
   );
 }
 
-function ProductModal({ product, onSave, onClose, showFlash }) {
+function ProductModal({ product, onSave, onClose }) {
   const [formData, setFormData] = useState(
-    product || { name: '', description: '', price: 0, stock: 0, image_url: '' }
+    product || { name: '', description: '', price: 0, stock: 0, image_url: '📦' }
   );
-  const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState(product?.image_url || '');
-
-  const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validasi tipe file
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (!allowedTypes.includes(file.type)) {
-      showFlash('Format file harus JPG, PNG, WebP, atau GIF!', 'error');
-      return;
-    }
-
-    // Validasi ukuran file (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      showFlash('Ukuran file maksimal 5MB!', 'error');
-      return;
-    }
-
-    setUploading(true);
-
-    try {
-      // Generate nama file unik
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-
-      // Upload ke Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(fileName, file);
-
-      if (uploadError) {
-        showFlash('Gagal upload foto!', 'error');
-        setUploading(false);
-        return;
-      }
-
-      // Dapatkan public URL
-      const { data } = supabase.storage
-        .from('product-images')
-        .getPublicUrl(fileName);
-
-      const imageUrl = data.publicUrl;
-
-      // Update form data dengan URL gambar
-      setFormData(prev => ({ ...prev, image_url: imageUrl }));
-      setPreview(imageUrl);
-
-      showFlash('Foto berhasil diupload!', 'success');
-    } catch (error) {
-      showFlash('Terjadi kesalahan saat upload!', 'error');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleSaveClick = () => {
-    if (!formData.name.trim()) {
-      showFlash('Nama produk tidak boleh kosong!', 'error');
-      return;
-    }
-    if (!formData.price || formData.price <= 0) {
-      showFlash('Harga harus lebih besar dari 0!', 'error');
-      return;
-    }
-    if (formData.stock < 0) {
-      showFlash('Stok tidak boleh negatif!', 'error');
-      return;
-    }
-
-    onSave(formData);
-  };
 
   return (
     <div 
@@ -235,35 +151,6 @@ function ProductModal({ product, onSave, onClose, showFlash }) {
         </h2>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Foto Produk</label>
-            <div className="border-2 border-dashed border-slate-300 rounded-lg p-4">
-              {preview && (
-                <div className="mb-3">
-                  <img 
-                    src={preview} 
-                    alt="Preview" 
-                    className="w-full h-40 object-cover rounded-lg"
-                  />
-                </div>
-              )}
-              <label className="flex flex-col items-center justify-center cursor-pointer">
-                <Upload size={24} className="text-slate-400 mb-2" />
-                <span className="text-sm text-slate-600">
-                  {uploading ? 'Uploading...' : 'Klik untuk upload foto'}
-                </span>
-                <input 
-                  type="file" 
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  disabled={uploading}
-                  className="hidden"
-                />
-              </label>
-              <p className="text-xs text-slate-500 mt-2">JPG, PNG, WebP, GIF max 5MB</p>
-            </div>
-          </div>
-
-          <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Nama Produk *</label>
             <input 
               type="text" 
@@ -274,7 +161,6 @@ function ProductModal({ product, onSave, onClose, showFlash }) {
               required 
             />
           </div>
-
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Deskripsi</label>
             <textarea 
@@ -285,7 +171,6 @@ function ProductModal({ product, onSave, onClose, showFlash }) {
               rows="2" 
             />
           </div>
-
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Harga (Rp) *</label>
             <input 
@@ -297,7 +182,6 @@ function ProductModal({ product, onSave, onClose, showFlash }) {
               required 
             />
           </div>
-
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Stok *</label>
             <input 
@@ -309,19 +193,26 @@ function ProductModal({ product, onSave, onClose, showFlash }) {
               required 
             />
           </div>
-
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Emoji Icon</label>
+            <input 
+              type="text" 
+              placeholder="🌾" 
+              value={formData.image_url} 
+              onChange={(e) => setFormData({...formData, image_url: e.target.value})} 
+              className="w-full px-4 py-2 border rounded-lg" 
+            />
+          </div>
           <div className="flex gap-2 pt-2">
             <button 
-              onClick={handleSaveClick}
-              disabled={uploading}
-              className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:bg-slate-400"
+              onClick={() => onSave(formData)} 
+              className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
             >
               Simpan
             </button>
             <button 
-              onClick={onClose}
-              disabled={uploading}
-              className="flex-1 bg-slate-200 py-2 rounded-lg hover:bg-slate-300 disabled:bg-slate-300"
+              onClick={onClose} 
+              className="flex-1 bg-slate-200 py-2 rounded-lg hover:bg-slate-300"
             >
               Batal
             </button>
