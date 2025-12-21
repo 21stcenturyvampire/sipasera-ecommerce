@@ -4,10 +4,10 @@ import { supabase } from '../supabaseClient';
 
 const CATEGORIES = [
   'Bahan Pokok',
-  'Protein',
+  'Sumber Protein',
   'Minyak & Bumbu',
-  'Makanan',
-  'Minuman',
+  'Makanan & Minuman',
+  'Produk Instan',
   'Kebutuhan Rumah Tangga',
   'Kesehatan & Kebersihan',
   'Lainnya'
