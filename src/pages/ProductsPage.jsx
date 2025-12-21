@@ -2,12 +2,25 @@ import React, { useState } from 'react';
 import { Search, Plus, Edit2, Trash2, Upload } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
+const CATEGORIES = [
+  'Bahan Pokok',
+  'Protein',
+  'Minyak & Bumbu',
+  'Makanan & Minuman',
+  'Kebutuhan Rumah Tangga',
+  'Kesehatan & Kebersihan'
+];
+
 export function ProductsPage({ products, currentUser, searchTerm, setSearchTerm, addToCart, fetchProducts, showFlash }) {
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-  const filtered = products.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const [selectedCategory, setSelectedCategory] = useState('Semua');
+
+  const filtered = products.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'Semua' || p.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   const handleSave = async (formData) => {
     if (editingProduct) {
@@ -76,6 +89,32 @@ export function ProductsPage({ products, currentUser, searchTerm, setSearchTerm,
         </div>
       </div>
 
+      <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
+        <button
+          onClick={() => setSelectedCategory('Semua')}
+          className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition ${
+            selectedCategory === 'Semua'
+              ? 'bg-blue-600 text-white'
+              : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+          }`}
+        >
+          Semua
+        </button>
+        {CATEGORIES.map(category => (
+          <button
+            key={category}
+            onClick={() => setSelectedCategory(category)}
+            className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition ${
+              selectedCategory === category
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+            }`}
+          >
+            {category}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {filtered.map(product => (
           <div 
@@ -94,7 +133,14 @@ export function ProductsPage({ products, currentUser, searchTerm, setSearchTerm,
               )}
             </div>
             <div className="p-4">
-              <h3 className="font-semibold text-lg text-slate-800 mb-1">{product.name}</h3>
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="font-semibold text-lg text-slate-800 flex-1">{product.name}</h3>
+                {product.category && (
+                  <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded ml-2">
+                    {product.category}
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-slate-600 mb-3">{product.description}</p>
               <div className="flex justify-between items-center mb-3">
                 <span className="text-xl font-bold text-blue-600">
@@ -131,6 +177,12 @@ export function ProductsPage({ products, currentUser, searchTerm, setSearchTerm,
         ))}
       </div>
 
+      {filtered.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-slate-500 text-lg">Produk tidak ditemukan</p>
+        </div>
+      )}
+
       {showModal && (
         <ProductModal 
           product={editingProduct} 
@@ -145,7 +197,7 @@ export function ProductsPage({ products, currentUser, searchTerm, setSearchTerm,
 
 function ProductModal({ product, onSave, onClose, showFlash }) {
   const [formData, setFormData] = useState(
-    product || { name: '', description: '', price: 0, stock: 0, image_url: '' }
+    product || { name: '', description: '', price: 0, stock: 0, image_url: '', category: '' }
   );
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState(product?.image_url || '');
@@ -154,14 +206,12 @@ function ProductModal({ product, onSave, onClose, showFlash }) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validasi tipe file
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     if (!allowedTypes.includes(file.type)) {
       showFlash('Format file harus JPG, PNG, WebP, atau GIF!', 'error');
       return;
     }
 
-    // Validasi ukuran file (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       showFlash('Ukuran file maksimal 5MB!', 'error');
       return;
@@ -170,11 +220,9 @@ function ProductModal({ product, onSave, onClose, showFlash }) {
     setUploading(true);
 
     try {
-      // Generate nama file unik
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
 
-      // Upload ke Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('product-images')
         .upload(fileName, file);
@@ -185,14 +233,12 @@ function ProductModal({ product, onSave, onClose, showFlash }) {
         return;
       }
 
-      // Dapatkan public URL
       const { data } = supabase.storage
         .from('product-images')
         .getPublicUrl(fileName);
 
       const imageUrl = data.publicUrl;
 
-      // Update form data dengan URL gambar
       setFormData(prev => ({ ...prev, image_url: imageUrl }));
       setPreview(imageUrl);
 
@@ -215,6 +261,10 @@ function ProductModal({ product, onSave, onClose, showFlash }) {
     }
     if (formData.stock < 0) {
       showFlash('Stok tidak boleh negatif!', 'error');
+      return;
+    }
+    if (!formData.category) {
+      showFlash('Kategori harus dipilih!', 'error');
       return;
     }
 
@@ -273,6 +323,23 @@ function ProductModal({ product, onSave, onClose, showFlash }) {
               className="w-full px-4 py-2 border rounded-lg" 
               required 
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Kategori *</label>
+            <select 
+              value={formData.category} 
+              onChange={(e) => setFormData({...formData, category: e.target.value})}
+              className="w-full px-4 py-2 border rounded-lg"
+              required
+            >
+              <option value="">-- Pilih Kategori --</option>
+              {CATEGORIES.map(category => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
