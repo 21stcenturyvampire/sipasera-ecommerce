@@ -6,9 +6,11 @@ const CATEGORIES = [
   'Bahan Pokok',
   'Protein',
   'Minyak & Bumbu',
-  'Makanan & Minuman',
+  'Makanan',
+  'Minuman',
   'Kebutuhan Rumah Tangga',
-  'Kesehatan & Kebersihan'
+  'Kesehatan & Kebersihan',
+  'Lainnya'
 ];
 
 export function ProductsPage({ products, currentUser, searchTerm, setSearchTerm, addToCart, fetchProducts, showFlash }) {
