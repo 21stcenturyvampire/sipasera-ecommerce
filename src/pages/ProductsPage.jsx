@@ -135,20 +135,28 @@ export function ProductsPage({ products, currentUser, searchTerm, setSearchTerm,
               )}
             </div>
             <div className="p-4">
-              <div className="flex justify-between items-start mb-2">
+              <div className="flex justify-between items-start">
                 <h3 className="font-semibold text-lg text-slate-800 flex-1">{product.name}</h3>
-                {product.category && (
-                  <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded ml-2">
+              </div>
+              {product.category && (
+                  <span className="text-xs bg-blue-100 text-blue-600 px-0.1 py-0.1 rounded">
                     {product.category}
                   </span>
                 )}
-              </div>
-              <p className="text-sm text-slate-600 mb-3">{product.description}</p>
+              <p className="text-sm text-slate-600 mt-2 mb-3">{product.description}</p>
               <div className="flex justify-between items-center mb-3">
                 <span className="text-xl font-bold text-blue-600">
                   Rp {parseFloat(product.price).toLocaleString()}
                 </span>
-                <span className="text-sm text-slate-500">Stok: {product.stock}</span>
+                <span className={`text-sm font-semibold px-2 py-1 rounded ${
+                  product.stock === 0 
+                    ? 'text-red-600' 
+                    : product.stock < 20
+                    ? 'text-yellow-600'
+                    : 'text-slate-600'
+                }`}>
+                  Stok: {product.stock}
+                </span>
               </div>
               {currentUser?.role === 'admin' ? (
                 <div className="flex gap-2">
