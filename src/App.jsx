@@ -74,7 +74,7 @@ export default function SipaseraApp() {
     }
   }, [currentUser]);
 
-  // Save cart to localStorage
+  // Save cart to localStorage (independent dari user session)
   useEffect(() => {
     if (cart.length > 0) {
       localStorage.setItem('cart', JSON.stringify(cart));
@@ -259,9 +259,8 @@ export default function SipaseraApp() {
   const handleLogout = () => {
     setCurrentUser(null);
     setCurrentPage('login');
-    setCart([]);
     localStorage.removeItem('currentUser');
-    localStorage.removeItem('cart');
+    // JANGAN hapus cart, biarkan tetap tersimpan
     showFlash('Berhasil logout', 'info');
   };
 
@@ -357,6 +356,7 @@ export default function SipaseraApp() {
     await supabase.from('order_items').insert(orderItems);
 
     setCart([]);
+    localStorage.removeItem('cart');
     fetchProducts();
     fetchOrders();
     setLoading(false);
