@@ -95,7 +95,7 @@ export function DashboardPage({ products, orders, users, reports }) {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm p-6">
-        <h2 className="text-xl font-bold text-slate-800 mb-4">Produk Paling Laris 🔥</h2>
+        <h2 className="text-xl font-bold text-slate-800 mb-4">Produk Paling Laris</h2>
         {bestSellers.length === 0 ? (
           <p className="text-slate-500 text-center py-8">Belum ada penjualan</p>
         ) : (
