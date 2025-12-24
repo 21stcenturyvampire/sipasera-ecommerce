@@ -151,10 +151,10 @@ export default function SipaseraApp() {
   };
 
   const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select(`*, payments (amount)`)
-      .order('order_id', { ascending: false });
+      const { data, error } = await supabase
+    .from('orders')
+    .select(`*, order_items(product_id, quantity)`)
+    .order('order_id', { ascending: false });
 
     if (error) {
       console.error('fetchOrders error:', error);
