@@ -26,9 +26,22 @@ export function CartPage({ cart, updateCartQuantity, creditLimits, currentUser, 
                 key={item.product_id} 
                 className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-4"
               >
-                <div className="text-4xl">{item.image_url}</div>
+                <div className="w-20 h-20 bg-slate-50 rounded-lg flex-shrink-0 overflow-hidden">
+                  {item.image_url ? (
+                    <img 
+                      src={item.image_url} 
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-2xl">📦</div>
+                  )}
+                </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-slate-800">{item.name}</h3>
+                  {item.category && (
+                    <p className="text-xs text-slate-500 mb-1">{item.category}</p>
+                  )}
                   <p className="text-blue-600 font-semibold">
                     Rp {parseFloat(item.price).toLocaleString()}
                   </p>
@@ -48,12 +61,17 @@ export function CartPage({ cart, updateCartQuantity, creditLimits, currentUser, 
                     +
                   </button>
                 </div>
-                <button 
-                  onClick={() => updateCartQuantity(item.product_id, 0)} 
-                  className="text-red-600 hover:bg-red-50 p-2 rounded-lg"
-                >
-                  <Trash2 size={20} />
-                </button>
+                <div className="text-right">
+                  <p className="text-slate-600 text-sm mb-2">
+                    Rp {(parseFloat(item.price) * item.quantity).toLocaleString()}
+                  </p>
+                  <button 
+                    onClick={() => updateCartQuantity(item.product_id, 0)} 
+                    className="text-red-600 hover:bg-red-50 p-2 rounded-lg"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
