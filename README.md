@@ -1,21 +1,21 @@
 # React + Vite SIPASERA E-COMMERCE APP
 
-1. Untuk menjalankan programnya silakan clone repo git atau download zip
+1. Untuk menjalankan programnya silakan clone repo git _https://github.com/21stcenturyvampire/sipasera-ecommerce.git_ atau download zip
 2. Setelah selesai cloning atau terdownload
 3. Buka terminal/command prompt untuk menjalankan aplikasi di lokal Anda dengan ketikkan "npm run dev"
-4. Klik enter dan otomatis akan membuka web browser default Anda dan jalankan programnya
+4. Klik enter dan otomatis akan membuka web browser default Anda yang akan menjalankan programnya
 
-Hak Akses admin
+**Hak Akses admin**
 1. email: admin@sipasera.com
 2. password: admin
 
-Hak Akses pelanggan existing
+**Hak Akses pelanggan existing**
 1. email: kelompok1@mail.com
 2. password: user
 3. Anda juga bisa membuat akun baru dengan klik registrasi akun pada halaman login
 
-Aplikasi SIPASERA juga bisa diakses online di web browser anda dengan link berikut:
-https://sipasera-ecommerce.vercel.app/
+Aplikasi SIPASERA juga bisa diakses secara online di web browser anda tanpa clone repo git dengan link berikut:
+_https://sipasera-ecommerce.vercel.app/_
 
 ## React Compiler
 
