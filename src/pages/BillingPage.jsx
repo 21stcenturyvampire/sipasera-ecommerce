@@ -1,17 +1,42 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DollarSign } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fetchCreditLimits, showFlash }) {
+  const [payments, setPayments] = useState({});
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('transfer');
+  const [selectedOrder, setSelectedOrder] = useState(null);
+
   const userCredit = creditLimits.find(c => c.user_id === currentUser.user_id);
   const paylaterOrders = orders.filter(
     o => o.user_id === currentUser.user_id && 
     o.payment_method === 'paylater' && 
     o.status !== 'paid'
   );
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('transfer');
-  const [selectedOrder, setSelectedOrder] = useState(null);
+
+  // Load semua payments saat component mount
+  useEffect(() => {
+    fetchAllPayments();
+  }, []);
+
+  const fetchAllPayments = async () => {
+    const { data } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('user_id', currentUser.user_id);
+    
+    if (data) {
+      const paymentMap = {};
+      data.forEach(p => {
+        if (!paymentMap[p.order_id]) {
+          paymentMap[p.order_id] = [];
+        }
+        paymentMap[p.order_id].push(p);
+      });
+      setPayments(paymentMap);
+    }
+  };
 
   const handlePayment = async () => {
     if (!selectedOrder || !paymentAmount || parseFloat(paymentAmount) <= 0) {
@@ -27,46 +52,64 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
       return;
     }
 
-    await supabase.from('payments').insert([{
-      user_id: currentUser.user_id,
-      order_id: selectedOrder.order_id,
-      amount: amount,
-      method: paymentMethod,
-      note: `Pembayaran Order #${selectedOrder.order_id}`
-    }]);
+    try {
+      await supabase.from('payments').insert([{
+        user_id: currentUser.user_id,
+        order_id: selectedOrder.order_id,
+        amount: amount,
+        method: paymentMethod,
+        note: `Pembayaran Order #${selectedOrder.order_id}`
+      }]);
 
-    const { data: paid } = await supabase
-      .from('payments')
-      .select('amount')
-      .eq('order_id', selectedOrder.order_id);
-    
-    const totalPaid = paid.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-    
-    if (totalPaid >= parseFloat(selectedOrder.total_amount)) {
-      await supabase
-        .from('orders')
-        .update({ status: 'paid' })
+      const { data: allPayments } = await supabase
+        .from('payments')
+        .select('amount')
         .eq('order_id', selectedOrder.order_id);
+      
+      const totalPaid = allPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+      const newRemaining = parseFloat(selectedOrder.total_amount) - totalPaid;
+
+      if (newRemaining <= 0) {
+        await supabase
+          .from('orders')
+          .update({ status: 'paid' })
+          .eq('order_id', selectedOrder.order_id);
+      }
+
+      if (userCredit) {
+        await supabase.from('user_credit_limit').update({
+          used_credit: Math.max(0, parseFloat(userCredit.used_credit) - amount)
+        }).eq('user_id', currentUser.user_id);
+      }
+
+      await supabase.from('financial_report').insert([{
+        report_type: 'income',
+        description: `Pembayaran Order #${selectedOrder.order_id} - ${currentUser.name}`,
+        amount: amount
+      }]);
+
+      const updatedPayments = { ...payments };
+      if (!updatedPayments[selectedOrder.order_id]) {
+        updatedPayments[selectedOrder.order_id] = [];
+      }
+      updatedPayments[selectedOrder.order_id].push({
+        amount: amount,
+        method: paymentMethod
+      });
+      setPayments(updatedPayments);
+
+      fetchOrders();
+      fetchCreditLimits();
+      fetchAllPayments();
+
+      showFlash('Pembayaran berhasil!', 'success');
+      setSelectedOrder(null);
+      setPaymentAmount('');
+      setPaymentMethod('transfer');
+    } catch (error) {
+      showFlash('Terjadi kesalahan saat pembayaran!', 'error');
+      console.error(error);
     }
-
-    if (userCredit) {
-      await supabase.from('user_credit_limit').update({
-        used_credit: Math.max(0, parseFloat(userCredit.used_credit) - amount)
-      }).eq('user_id', currentUser.user_id);
-    }
-
-    await supabase.from('financial_report').insert([{
-      report_type: 'income',
-      description: `Pembayaran Order #${selectedOrder.order_id} - ${currentUser.name}`,
-      amount: amount
-    }]);
-
-    fetchOrders();
-    fetchCreditLimits();
-    showFlash('Pembayaran berhasil!', 'success');
-    setSelectedOrder(null);
-    setPaymentAmount('');
-    setPaymentMethod('transfer');
   };
 
   const getDaysRemaining = (dueDate) => {
@@ -77,10 +120,14 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
   };
 
   const getRemainingAmount = (order) => {
-    const paid = order.payments
-      ? order.payments.reduce((sum, p) => sum + Number(p.amount), 0)
-      : 0;
-    return Math.max(Number(order.total_amount) - paid, 0);
+    const orderPayments = payments[order.order_id] || [];
+    const paid = orderPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+    return Math.max(parseFloat(order.total_amount) - paid, 0);
+  };
+
+  const getTotalPaid = (order) => {
+    const orderPayments = payments[order.order_id] || [];
+    return orderPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
   };
 
   return (
@@ -121,6 +168,7 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
               const daysRemaining = getDaysRemaining(order.due_date);
               const isOverdue = daysRemaining < 0;
               const remaining = getRemainingAmount(order);
+              const totalPaid = getTotalPaid(order);
               const isPaid = remaining <= 0 || order.status === 'paid';
               
               return (
@@ -141,11 +189,19 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
                       <p className="text-sm text-slate-600">
                         Jatuh Tempo: {new Date(order.due_date).toLocaleDateString('id-ID')}
                       </p>
-                      <p className={`text-sm font-medium ${isPaid ? 'text-green-700' : 'text-red-600'}`}>
-                        {isPaid
-                          ? 'LUNAS'
-                          : `Sisa Hutang: Rp ${Math.max(remaining, 0).toLocaleString()}`}
-                      </p>
+                      <div className="mt-2 space-y-1">
+                        <p className="text-sm text-slate-600">
+                          Total Tagihan: Rp {parseFloat(order.total_amount).toLocaleString()}
+                        </p>
+                        <p className="text-sm text-slate-600">
+                          Sudah Dibayar: Rp {totalPaid.toLocaleString()}
+                        </p>
+                        <p className={`text-sm font-medium ${isPaid ? 'text-green-700' : 'text-red-600'}`}>
+                          {isPaid
+                            ? '✓ LUNAS'
+                            : `Sisa Hutang: Rp ${remaining.toLocaleString()}`}
+                        </p>
+                      </div>
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-bold text-blue-600">
@@ -163,13 +219,13 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
                   <button 
                     onClick={() => !isPaid && setSelectedOrder(order)}
                     disabled={isPaid}
-                    className={`w-full py-2 rounded-lg text-white ${
+                    className={`w-full py-2 rounded-lg text-white font-medium ${
                       isPaid
-                        ? 'bg-gray-400 cursor-not-allowed'
+                        ? 'bg-gray-500 cursor-not-allowed'
                         : 'bg-blue-600 hover:bg-blue-700'
                     }`}
                   >
-                    {isPaid ? 'Sudah Lunas' : 'Bayar Sekarang'}
+                    {isPaid ? '✓ Sudah Lunas' : 'Bayar Sekarang'}
                   </button>
                 </div>
               );
@@ -195,6 +251,9 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
               </p>
               <p className="text-sm text-slate-500">
                 Total Tagihan: Rp {parseFloat(selectedOrder.total_amount).toLocaleString()}
+              </p>
+              <p className="text-sm text-slate-500">
+                Sudah Dibayar: Rp {getTotalPaid(selectedOrder).toLocaleString()}
               </p>
             </div>
             <div className="space-y-4">
@@ -240,6 +299,7 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
                 <button 
                   onClick={() => {
                     setSelectedOrder(null);
+                    setPaymentAmount('');
                     setPaymentMethod('transfer');
                   }} 
                   className="flex-1 bg-slate-200 py-2 rounded-lg hover:bg-slate-300"

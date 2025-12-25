@@ -7,10 +7,8 @@ import {
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
-// Import components
 import { NotificationBanner, FlashMessage, LoadingOverlay } from './components/CommonComponents';
 
-// Import pages
 import { LoginPage, RegisterPage } from './pages/AuthPages';
 import { DashboardPage } from './pages/DashboardPage';
 import { ProductsPage } from './pages/ProductsPage';
@@ -40,7 +38,6 @@ export default function SipaseraApp() {
   const [operationalExpenses, setOperationalExpenses] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Check session on app load
   useEffect(() => {
     const savedUser = localStorage.getItem('currentUser');
     const savedCart = localStorage.getItem('cart');
@@ -65,7 +62,6 @@ export default function SipaseraApp() {
     setLoading(false);
   }, []);
 
-  // Save user session to localStorage
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('currentUser', JSON.stringify(currentUser));
@@ -74,7 +70,6 @@ export default function SipaseraApp() {
     }
   }, [currentUser]);
 
-  // Save cart to localStorage (independent dari user session)
   useEffect(() => {
     if (cart.length > 0) {
       localStorage.setItem('cart', JSON.stringify(cart));
@@ -260,7 +255,6 @@ export default function SipaseraApp() {
     setCurrentUser(null);
     setCurrentPage('login');
     localStorage.removeItem('currentUser');
-    // JANGAN hapus cart, biarkan tetap tersimpan
     showFlash('Berhasil logout', 'info');
   };
 

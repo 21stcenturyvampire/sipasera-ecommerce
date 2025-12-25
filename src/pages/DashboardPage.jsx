@@ -15,7 +15,6 @@ export function DashboardPage({ products, orders, users, reports }) {
   const pendingOrders = orders.filter(o => o.status === 'pending').length;
   const totalCustomers = users.filter(u => u.role === 'user').length;
 
-  // Hitung produk paling laris
   const getBestSellingProducts = () => {
     const salesMap = {};
 
