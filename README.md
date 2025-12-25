@@ -5,6 +5,9 @@
 3. Buka terminal/command prompt untuk menjalankan aplikasi di lokal Anda dengan ketikkan "npm run dev"
 4. Klik enter dan otomatis akan membuka web browser default Anda yang akan menjalankan programnya
 
+**Notes:
+Aplikasi SIPASERA E-COMMERCE APP tidak perlu import sql karena sudah menggunakan database berbasis API dengan Supabase yang sudah terhubung di dalam code sistem inti yang berisikan kredensial dari database.
+
 **Hak Akses admin**
 1. email: admin@sipasera.com
 2. password: admin
