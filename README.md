@@ -1,11 +1,21 @@
-# React + Vite
+# React + Vite SIPASERA E-COMMERCE APP
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+1. Untuk menjalankan programnya silakan clone repo git atau download zip
+2. Setelah selesai cloning atau terdownload
+3. Buka terminal/command prompt untuk menjalankan aplikasi di lokal Anda dengan ketikkan "npm run dev"
+4. Klik enter dan otomatis akan membuka web browser default Anda dan jalankan programnya
 
-Currently, two official plugins are available:
+Hak Akses admin
+1. email: admin@sipasera.com
+2. password: admin
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Hak Akses pelanggan existing
+1. email: kelompok1@mail.com
+2. password: user
+3. Anda juga bisa membuat akun baru dengan klik registrasi akun pada halaman login
+
+Aplikasi SIPASERA juga bisa diakses online di web browser anda dengan link berikut:
+https://sipasera-ecommerce.vercel.app/
 
 ## React Compiler
 
