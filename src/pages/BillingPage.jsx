@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { DollarSign, ChevronDown, ChevronUp, Check, Search, X } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fetchCreditLimits, showFlash }) {
@@ -9,13 +9,16 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [expandedOrder, setExpandedOrder] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [lunasiFull, setLunasiFull] = useState(false);
 
   const userCredit = creditLimits.find(c => c.user_id === currentUser.user_id);
   
-  // Pisahkan invoice aktif dan history berdasarkan sisa hutang
-  const activeOrders = orders.filter(o => {
+  const allUserOrders = orders.filter(o => o.user_id === currentUser.user_id && o.payment_method === 'paylater');
+  
+  const activeOrders = allUserOrders.filter(o => {
     try {
-      if (o.user_id !== currentUser.user_id || o.payment_method !== 'paylater') return false;
       const orderPayments = payments[o.order_id] || [];
       const paid = orderPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
       const remaining = Math.max(parseFloat(o.total_amount) - paid, 0);
@@ -25,9 +28,8 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
     }
   });
 
-  const paidOrders = orders.filter(o => {
+  const paidOrders = allUserOrders.filter(o => {
     try {
-      if (o.user_id !== currentUser.user_id || o.payment_method !== 'paylater') return false;
       const orderPayments = payments[o.order_id] || [];
       const paid = orderPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
       const remaining = Math.max(parseFloat(o.total_amount) - paid, 0);
@@ -37,100 +39,175 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
     }
   });
 
-  // Load semua payments saat component mount
+  const filteredActiveOrders = activeOrders.filter(order => {
+    if (!searchQuery) return true;
+    return (
+      order.order_id.toString().includes(searchQuery) ||
+      new Date(order.created_at).toLocaleDateString('id-ID').includes(searchQuery) ||
+      new Date(order.due_date).toLocaleDateString('id-ID').includes(searchQuery) ||
+      parseFloat(order.total_amount).toLocaleString().includes(searchQuery)
+    );
+  });
+
+  const filteredPaidOrders = paidOrders.filter(order => {
+    if (!searchQuery) return true;
+    return (
+      order.order_id.toString().includes(searchQuery) ||
+      new Date(order.created_at).toLocaleDateString('id-ID').includes(searchQuery) ||
+      new Date(order.due_date).toLocaleDateString('id-ID').includes(searchQuery) ||
+      parseFloat(order.total_amount).toLocaleString().includes(searchQuery)
+    );
+  });
+
   useEffect(() => {
     fetchAllPayments();
-  }, []);
+  }, [orders, currentUser.user_id]);
+
+  useEffect(() => {
+    if (selectedOrder) {
+      if (lunasiFull) {
+        const remaining = getRemainingAmount(selectedOrder);
+        setPaymentAmount(remaining.toString());
+      } else {
+        setPaymentAmount('');
+      }
+    }
+  }, [lunasiFull]);
 
   const fetchAllPayments = async () => {
-    const { data } = await supabase
-      .from('payments')
-      .select('*')
-      .eq('user_id', currentUser.user_id);
-    
-    if (data) {
-      const paymentMap = {};
-      data.forEach(p => {
-        if (!paymentMap[p.order_id]) {
-          paymentMap[p.order_id] = [];
-        }
-        paymentMap[p.order_id].push(p);
-      });
-      setPayments(paymentMap);
+    try {
+      const { data, error } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('user_id', currentUser.user_id);
+      
+      if (error) throw error;
+      
+      if (data) {
+        const paymentMap = {};
+        data.forEach(p => {
+          if (!paymentMap[p.order_id]) {
+            paymentMap[p.order_id] = [];
+          }
+          paymentMap[p.order_id].push(p);
+        });
+        setPayments(paymentMap);
+      }
+    } catch (error) {
+      console.error('Error fetching payments:', error);
     }
   };
 
   const handlePayment = async () => {
-    if (!selectedOrder || !paymentAmount || parseFloat(paymentAmount) <= 0) {
+    if (!selectedOrder) {
+      showFlash('Order tidak ditemukan!', 'error');
+      return;
+    }
+
+    let finalAmount = 0;
+    
+    if (lunasiFull) {
+      finalAmount = getRemainingAmount(selectedOrder);
+    } else {
+      finalAmount = parseFloat(paymentAmount);
+    }
+
+    if (!finalAmount || finalAmount <= 0) {
       showFlash('Jumlah pembayaran tidak valid!', 'error');
       return;
     }
 
-    const amount = parseFloat(paymentAmount);
     const remaining = getRemainingAmount(selectedOrder);
-
-    if (amount > remaining) {
+    if (finalAmount > remaining) {
       showFlash('Jumlah pembayaran melebihi tagihan!', 'error');
       return;
     }
 
+    setIsLoading(true);
     try {
-      await supabase.from('payments').insert([{
+      const methodValue = String(paymentMethod).trim().toLowerCase();
+      const amountValue = Number(finalAmount);
+      
+      const paymentData = {
         user_id: currentUser.user_id,
         order_id: selectedOrder.order_id,
-        amount: amount,
-        method: paymentMethod,
+        amount: amountValue,
+        method: methodValue,
         note: `Pembayaran Order #${selectedOrder.order_id}`
-      }]);
+      };
 
-      const { data: allPayments } = await supabase
+      const { error: paymentError } = await supabase
+        .from('payments')
+        .insert([paymentData]);
+
+      if (paymentError) {
+        throw new Error(`Gagal insert payment: ${paymentError.message}`);
+      }
+
+      const { data: allPayments, error: fetchError } = await supabase
         .from('payments')
         .select('amount')
         .eq('order_id', selectedOrder.order_id);
       
+      if (fetchError) {
+        throw new Error(`Gagal fetch payments: ${fetchError.message}`);
+      }
+
       const totalPaid = allPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
       const newRemaining = parseFloat(selectedOrder.total_amount) - totalPaid;
 
       if (newRemaining <= 0) {
-        await supabase
+        const { error: updateOrderError } = await supabase
           .from('orders')
-          .update({ status: 'paid' })
+          .update({ status: 'completed' })
           .eq('order_id', selectedOrder.order_id);
+        
+        if (updateOrderError) {
+          console.log('Warning: Order status update failed, but payment was successful');
+        }
       }
 
       if (userCredit) {
-        await supabase.from('user_credit_limit').update({
-          used_credit: Math.max(0, parseFloat(userCredit.used_credit) - amount)
-        }).eq('user_id', currentUser.user_id);
+        const newUsedCredit = Math.max(0, parseFloat(userCredit.used_credit) - amountValue);
+
+        const { error: creditError } = await supabase
+          .from('user_credit_limit')
+          .update({
+            used_credit: newUsedCredit
+          })
+          .eq('user_id', currentUser.user_id);
+        
+        if (creditError) {
+          console.log('Warning: Credit limit update failed, but payment was successful');
+        }
       }
 
-      await supabase.from('financial_report').insert([{
-        report_type: 'income',
-        description: `Pembayaran Order #${selectedOrder.order_id} - ${currentUser.name}`,
-        amount: amount
-      }]);
-
-      const updatedPayments = { ...payments };
-      if (!updatedPayments[selectedOrder.order_id]) {
-        updatedPayments[selectedOrder.order_id] = [];
+      const { error: reportError } = await supabase
+        .from('financial_report')
+        .insert([{
+          report_type: 'income',
+          description: `Pembayaran Order #${selectedOrder.order_id} - ${currentUser.name}`,
+          amount: amountValue
+        }]);
+      
+      if (reportError) {
+        console.log('Warning: Financial report insertion failed, but payment was successful');
       }
-      updatedPayments[selectedOrder.order_id].push({
-        amount: amount,
-        method: paymentMethod
-      });
-      setPayments(updatedPayments);
 
-      fetchOrders();
-      fetchCreditLimits();
-      fetchAllPayments();
+      await fetchAllPayments();
+      await fetchOrders();
+      await fetchCreditLimits();
 
       showFlash('Pembayaran berhasil!', 'success');
       setSelectedOrder(null);
       setPaymentAmount('');
       setPaymentMethod('transfer');
+      setLunasiFull(false);
     } catch (error) {
-      showFlash('Terjadi kesalahan saat pembayaran!', 'error');
-      console.error(error);
+      showFlash(`Terjadi kesalahan: ${error.message}`, 'error');
+      console.error('Payment error:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -177,7 +254,15 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
       >
         <div className="flex justify-between items-start mb-3">
           <div>
-            <h3 className="font-semibold text-lg">Order #{order.order_id}</h3>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="font-semibold text-lg">Order #{order.order_id}</h3>
+              {isPaid && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-300">
+                  <Check size={14} />
+                  LUNAS
+                </span>
+              )}
+            </div>
             <p className="text-sm text-slate-600">
               Tanggal: {new Date(order.created_at).toLocaleDateString('id-ID')}
             </p>
@@ -196,12 +281,6 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
                 'bg-green-100 text-green-700'
               }`}>
                 {isOverdue ? `Terlambat ${Math.abs(daysRemaining)} hari` : `${daysRemaining} hari lagi`}
-              </span>
-            )}
-            {isPaid && (
-              <span className="inline-block px-3 py-1 rounded-full text-xs font-medium mt-2 bg-green-100 text-green-700 flex items-center gap-1">
-                <Check size={14} />
-                LUNAS
               </span>
             )}
           </div>
@@ -257,8 +336,12 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
 
           {!isPaid && (
             <button 
-              onClick={() => setSelectedOrder(order)}
-              className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
+              onClick={() => {
+                setSelectedOrder(order);
+                setPaymentAmount('');
+                setLunasiFull(false);
+              }}
+              className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition"
             >
               Bayar Sekarang
             </button>
@@ -293,16 +376,44 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
         </div>
       </div>
 
+      <div className="mb-6 relative">
+        <div className="relative">
+          <Search size={20} className="absolute left-3 top-3 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Cari nomor order, tanggal, atau nominal..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-10 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
+            >
+              <X size={20} />
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
         <h2 className="text-xl font-semibold text-slate-800 mb-4">Invoice Aktif</h2>
+        {searchQuery && (
+          <p className="text-sm text-slate-500 mb-4">
+            Ditemukan {filteredActiveOrders.length} invoice aktif
+          </p>
+        )}
         <div className="space-y-4">
-          {activeOrders.length === 0 ? (
+          {filteredActiveOrders.length === 0 ? (
             <div className="text-center py-12">
               <DollarSign size={64} className="mx-auto text-slate-300 mb-4" />
-              <p className="text-slate-600">Tidak ada tagihan paylater</p>
+              <p className="text-slate-600">
+                {searchQuery ? 'Tidak ada invoice yang cocok dengan pencarian' : 'Tidak ada tagihan paylater'}
+              </p>
             </div>
           ) : (
-            activeOrders.map(order => renderOrderCard(order, false))
+            filteredActiveOrders.map(order => renderOrderCard(order, false))
           )}
         </div>
       </div>
@@ -315,14 +426,20 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
           >
             <span className="font-semibold text-green-700 flex items-center gap-2">
               <Check size={20} className="text-green-600" />
-              Riwayat Pembayaran ({paidOrders.length})
+              Riwayat Pembayaran ({filteredPaidOrders.length})
             </span>
             {showHistory ? <ChevronUp size={20} className="text-green-600" /> : <ChevronDown size={20} className="text-green-600" />}
           </button>
 
           {showHistory && (
             <div className="mt-4 space-y-4">
-              {paidOrders.map(order => renderOrderCard(order, true))}
+              {filteredPaidOrders.length === 0 ? (
+                <p className="text-center text-slate-600 py-8">
+                  {searchQuery ? 'Tidak ada riwayat yang cocok dengan pencarian' : 'Tidak ada riwayat pembayaran'}
+                </p>
+              ) : (
+                filteredPaidOrders.map(order => renderOrderCard(order, true))
+              )}
             </div>
           )}
         </div>
@@ -330,27 +447,27 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
 
       {selectedOrder && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" 
-          onClick={() => {
-            setSelectedOrder(null);
-            setPaymentMethod('transfer');
-          }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={() => setSelectedOrder(null)}
         >
-          <div className="bg-white rounded-xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-xl font-bold mb-4">Bayar Tagihan</h2>
-            <div className="mb-4">
-              <p className="text-sm text-slate-600">Order #{selectedOrder.order_id}</p>
-              <p className="text-2xl font-bold text-blue-600">
+          <div 
+            className="bg-white rounded-xl p-6 max-w-md w-full shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-xl font-bold mb-4 text-slate-800">Bayar Tagihan</h2>
+            
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <p className="text-sm text-slate-600 mb-2">Order #{selectedOrder.order_id}</p>
+              <p className="text-3xl font-bold text-blue-600 mb-2">
                 Rp {getRemainingAmount(selectedOrder).toLocaleString()}
               </p>
-              <p className="text-sm text-slate-500">
-                Total Tagihan: Rp {parseFloat(selectedOrder.total_amount).toLocaleString()}
-              </p>
-              <p className="text-sm text-slate-500">
-                Sudah Dibayar: Rp {getTotalPaid(selectedOrder).toLocaleString()}
-              </p>
+              <div className="space-y-1 text-sm text-slate-600">
+                <p>Total Tagihan: Rp {parseFloat(selectedOrder.total_amount).toLocaleString()}</p>
+                <p>Sudah Dibayar: Rp {getTotalPaid(selectedOrder).toLocaleString()}</p>
+              </div>
             </div>
-            <div className="space-y-4">
+
+            <div className="space-y-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Metode Pembayaran
@@ -358,49 +475,87 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
                 <select 
                   value={paymentMethod} 
                   onChange={(e) => setPaymentMethod(e.target.value)} 
-                  className="w-full px-4 py-2 border rounded-lg"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isLoading}
                 >
                   <option value="transfer">Transfer Bank</option>
                   <option value="cash">Tunai</option>
                   <option value="e-wallet">E-Wallet</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Jumlah Bayar (Rp)
-                </label>
-                <input 
-                  type="number" 
-                  value={paymentAmount} 
-                  onChange={(e) => setPaymentAmount(e.target.value)} 
-                  placeholder={getRemainingAmount(selectedOrder).toLocaleString()} 
-                  className="w-full px-4 py-2 border rounded-lg" 
+
+              <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200 cursor-pointer hover:bg-green-100 transition"
+                onClick={() => setLunasiFull(!lunasiFull)}
+              >
+                <input
+                  type="checkbox"
+                  id="lunasiFull"
+                  checked={lunasiFull}
+                  onChange={(e) => setLunasiFull(e.target.checked)}
+                  disabled={isLoading}
+                  className="w-5 h-5 text-green-600 rounded cursor-pointer"
                 />
-                {paymentAmount && parseFloat(paymentAmount) > getRemainingAmount(selectedOrder) && (
-                  <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
-                    <span>⚠️</span> Nominal pembayaran melebihi sisa tagihan!
+                <label htmlFor="lunasiFull" className="flex-1 cursor-pointer">
+                  <p className="font-medium text-slate-800">Lunasi Hutang</p>
+                  <p className="text-sm text-slate-600">
+                    Rp {getRemainingAmount(selectedOrder).toLocaleString()}
                   </p>
-                )}
+                </label>
               </div>
-              <div className="flex gap-2">
-                <button 
-                  onClick={handlePayment}
-                  disabled={!paymentAmount || parseFloat(paymentAmount) <= 0 || parseFloat(paymentAmount) > getRemainingAmount(selectedOrder)}
-                  className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
-                >
-                  Bayar
-                </button>
-                <button 
-                  onClick={() => {
-                    setSelectedOrder(null);
-                    setPaymentAmount('');
-                    setPaymentMethod('transfer');
-                  }} 
-                  className="flex-1 bg-slate-200 py-2 rounded-lg hover:bg-slate-300"
-                >
-                  Batal
-                </button>
-              </div>
+
+              {!lunasiFull ? (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Jumlah Bayar (Rp)
+                  </label>
+                  <input 
+                    type="number" 
+                    value={paymentAmount} 
+                    onChange={(e) => setPaymentAmount(e.target.value)} 
+                    placeholder="Masukkan jumlah pembayaran"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                    disabled={isLoading}
+                    autoFocus
+                  />
+                  {paymentAmount && parseFloat(paymentAmount) > getRemainingAmount(selectedOrder) && (
+                    <p className="text-sm text-red-600 mt-2 flex items-center gap-1">
+                      <span>⚠️</span> Nominal pembayaran melebihi sisa tagihan!
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm font-medium text-slate-700 mb-2">Jumlah Pembayaran</p>
+                  <div className="w-full px-4 py-3 border border-green-300 bg-green-100 rounded-lg text-slate-800 font-bold text-lg">
+                    Rp {getRemainingAmount(selectedOrder).toLocaleString()}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={handlePayment}
+                disabled={
+                  (lunasiFull === false && (!paymentAmount || parseFloat(paymentAmount) <= 0 || parseFloat(paymentAmount) > getRemainingAmount(selectedOrder))) || 
+                  isLoading
+                }
+                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed font-medium transition"
+              >
+                {isLoading ? 'Memproses...' : 'Bayar'}
+              </button>
+              <button 
+                onClick={() => {
+                  setSelectedOrder(null);
+                  setPaymentAmount('');
+                  setPaymentMethod('transfer');
+                  setLunasiFull(false);
+                }}
+                disabled={isLoading}
+                className="flex-1 bg-slate-200 text-slate-800 py-2 px-4 rounded-lg hover:bg-slate-300 disabled:bg-slate-300 font-medium transition"
+              >
+                Batal
+              </button>
             </div>
           </div>
         </div>
