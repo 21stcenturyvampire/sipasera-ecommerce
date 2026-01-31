@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign } from 'lucide-react';
+import { DollarSign, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fetchCreditLimits, showFlash }) {
@@ -7,13 +7,35 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('transfer');
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [expandedOrder, setExpandedOrder] = useState(null);
 
   const userCredit = creditLimits.find(c => c.user_id === currentUser.user_id);
-  const paylaterOrders = orders.filter(
-    o => o.user_id === currentUser.user_id && 
-    o.payment_method === 'paylater' && 
-    o.status !== 'paid'
-  );
+  
+  // Pisahkan invoice aktif dan history berdasarkan sisa hutang
+  const activeOrders = orders.filter(o => {
+    try {
+      if (o.user_id !== currentUser.user_id || o.payment_method !== 'paylater') return false;
+      const orderPayments = payments[o.order_id] || [];
+      const paid = orderPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+      const remaining = Math.max(parseFloat(o.total_amount) - paid, 0);
+      return remaining > 0;
+    } catch (error) {
+      return true;
+    }
+  });
+
+  const paidOrders = orders.filter(o => {
+    try {
+      if (o.user_id !== currentUser.user_id || o.payment_method !== 'paylater') return false;
+      const orderPayments = payments[o.order_id] || [];
+      const paid = orderPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+      const remaining = Math.max(parseFloat(o.total_amount) - paid, 0);
+      return remaining <= 0;
+    } catch (error) {
+      return false;
+    }
+  });
 
   // Load semua payments saat component mount
   useEffect(() => {
@@ -120,14 +142,130 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
   };
 
   const getRemainingAmount = (order) => {
-    const orderPayments = payments[order.order_id] || [];
-    const paid = orderPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-    return Math.max(parseFloat(order.total_amount) - paid, 0);
+    try {
+      const orderPayments = payments[order.order_id] || [];
+      const paid = orderPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+      return Math.max(parseFloat(order.total_amount) - paid, 0);
+    } catch (error) {
+      console.error('getRemainingAmount error:', error);
+      return parseFloat(order.total_amount);
+    }
   };
 
   const getTotalPaid = (order) => {
     const orderPayments = payments[order.order_id] || [];
     return orderPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+  };
+
+  const renderOrderCard = (order, isPaid = false) => {
+    const daysRemaining = getDaysRemaining(order.due_date);
+    const isOverdue = daysRemaining < 0;
+    const remaining = getRemainingAmount(order);
+    const totalPaid = getTotalPaid(order);
+    const isExpanded = expandedOrder === order.order_id;
+
+    return (
+      <div 
+        key={order.order_id} 
+        className={`border-2 rounded-lg p-4 ${
+          isPaid 
+            ? 'border-green-300 bg-green-50'
+            : isOverdue ? 'border-red-300 bg-red-50' : 
+            daysRemaining <= 7 ? 'border-yellow-300 bg-yellow-50' : 
+            'border-slate-200'
+        }`}
+      >
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <h3 className="font-semibold text-lg">Order #{order.order_id}</h3>
+            <p className="text-sm text-slate-600">
+              Tanggal: {new Date(order.created_at).toLocaleDateString('id-ID')}
+            </p>
+            <p className="text-sm text-slate-600">
+              Jatuh Tempo: {new Date(order.due_date).toLocaleDateString('id-ID')}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-bold text-blue-600">
+              Rp {parseFloat(order.total_amount).toLocaleString()}
+            </p>
+            {!isPaid && (
+              <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium mt-2 ${
+                isOverdue ? 'bg-red-100 text-red-700' : 
+                daysRemaining <= 7 ? 'bg-yellow-100 text-yellow-700' : 
+                'bg-green-100 text-green-700'
+              }`}>
+                {isOverdue ? `Terlambat ${Math.abs(daysRemaining)} hari` : `${daysRemaining} hari lagi`}
+              </span>
+            )}
+            {isPaid && (
+              <span className="inline-block px-3 py-1 rounded-full text-xs font-medium mt-2 bg-green-100 text-green-700 flex items-center gap-1">
+                <Check size={14} />
+                LUNAS
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="mb-3 space-y-1 text-sm">
+          <p className="text-slate-600">
+            Total Tagihan: Rp {parseFloat(order.total_amount).toLocaleString()}
+          </p>
+          <p className="text-slate-600">
+            Sudah Dibayar: Rp {totalPaid.toLocaleString()}
+          </p>
+          {!isPaid && (
+            <p className="text-red-600 font-medium">
+              Sisa Hutang: Rp {remaining.toLocaleString()}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          {isPaid && (
+            <>
+              <button 
+                onClick={() => setExpandedOrder(isExpanded ? null : order.order_id)}
+                className="w-full py-2 rounded-lg bg-green-500 text-white font-medium flex items-center justify-between px-4"
+              >
+                <span className="flex items-center gap-2">
+                  <Check size={20} />
+                  Sudah Lunas
+                </span>
+                {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </button>
+
+              {isExpanded && (
+                <div className="mt-3 p-3 bg-white rounded-lg border border-green-200">
+                  <h4 className="font-semibold text-sm mb-2">Detail Pembayaran:</h4>
+                  <div className="space-y-2">
+                    {(payments[order.order_id] || []).map((payment, idx) => (
+                      <div key={idx} className="flex justify-between text-sm">
+                        <span className="text-slate-600">
+                          {payment.method ? payment.method.charAt(0).toUpperCase() + payment.method.slice(1) : 'Pembayaran'} #{idx + 1}
+                        </span>
+                        <span className="font-medium text-green-600">
+                          Rp {parseFloat(payment.amount).toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {!isPaid && (
+            <button 
+              onClick={() => setSelectedOrder(order)}
+              className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
+            >
+              Bayar Sekarang
+            </button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -155,84 +293,40 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <h2 className="text-xl font-semibold text-slate-800 mb-4">Daftar Tagihan</h2>
+      <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <h2 className="text-xl font-semibold text-slate-800 mb-4">Invoice Aktif</h2>
         <div className="space-y-4">
-          {paylaterOrders.length === 0 ? (
+          {activeOrders.length === 0 ? (
             <div className="text-center py-12">
               <DollarSign size={64} className="mx-auto text-slate-300 mb-4" />
               <p className="text-slate-600">Tidak ada tagihan paylater</p>
             </div>
           ) : (
-            paylaterOrders.map(order => {
-              const daysRemaining = getDaysRemaining(order.due_date);
-              const isOverdue = daysRemaining < 0;
-              const remaining = getRemainingAmount(order);
-              const totalPaid = getTotalPaid(order);
-              const isPaid = remaining <= 0 || order.status === 'paid';
-              
-              return (
-                <div 
-                  key={order.order_id} 
-                  className={`border-2 rounded-lg p-4 ${
-                    isOverdue ? 'border-red-300 bg-red-50' : 
-                    daysRemaining <= 7 ? 'border-yellow-300 bg-yellow-50' : 
-                    'border-slate-200'
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <h3 className="font-semibold text-lg">Order #{order.order_id}</h3>
-                      <p className="text-sm text-slate-600">
-                        Tanggal: {new Date(order.created_at).toLocaleDateString('id-ID')}
-                      </p>
-                      <p className="text-sm text-slate-600">
-                        Jatuh Tempo: {new Date(order.due_date).toLocaleDateString('id-ID')}
-                      </p>
-                      <div className="mt-2 space-y-1">
-                        <p className="text-sm text-slate-600">
-                          Total Tagihan: Rp {parseFloat(order.total_amount).toLocaleString()}
-                        </p>
-                        <p className="text-sm text-slate-600">
-                          Sudah Dibayar: Rp {totalPaid.toLocaleString()}
-                        </p>
-                        <p className={`text-sm font-medium ${isPaid ? 'text-green-700' : 'text-red-600'}`}>
-                          {isPaid
-                            ? '✓ LUNAS'
-                            : `Sisa Hutang: Rp ${remaining.toLocaleString()}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-blue-600">
-                        Rp {parseFloat(order.total_amount).toLocaleString()}
-                      </p>
-                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium mt-2 ${
-                        isOverdue ? 'bg-red-100 text-red-700' : 
-                        daysRemaining <= 7 ? 'bg-yellow-100 text-yellow-700' : 
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {isOverdue ? `Terlambat ${Math.abs(daysRemaining)} hari` : `${daysRemaining} hari lagi`}
-                      </span>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => !isPaid && setSelectedOrder(order)}
-                    disabled={isPaid}
-                    className={`w-full py-2 rounded-lg text-white font-medium ${
-                      isPaid
-                        ? 'bg-gray-500 cursor-not-allowed'
-                        : 'bg-blue-600 hover:bg-blue-700'
-                    }`}
-                  >
-                    {isPaid ? '✓ Sudah Lunas' : 'Bayar Sekarang'}
-                  </button>
-                </div>
-              );
-            })
+            activeOrders.map(order => renderOrderCard(order, false))
           )}
         </div>
       </div>
+
+      {paidOrders.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className="w-full flex items-center justify-between py-3 px-4 bg-green-50 hover:bg-green-100 rounded-lg border border-green-200 transition"
+          >
+            <span className="font-semibold text-green-700 flex items-center gap-2">
+              <Check size={20} className="text-green-600" />
+              Riwayat Pembayaran ({paidOrders.length})
+            </span>
+            {showHistory ? <ChevronUp size={20} className="text-green-600" /> : <ChevronDown size={20} className="text-green-600" />}
+          </button>
+
+          {showHistory && (
+            <div className="mt-4 space-y-4">
+              {paidOrders.map(order => renderOrderCard(order, true))}
+            </div>
+          )}
+        </div>
+      )}
 
       {selectedOrder && (
         <div 
