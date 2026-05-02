@@ -125,7 +125,13 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
 
     setIsLoading(true);
     try {
-      const methodValue = String(paymentMethod).trim().toLowerCase();
+      const methodMap = {
+        'transfer': 'transfer',
+        'cash': 'cash',
+        'e-wallet': 'ewallet'
+      };
+      
+      const methodValue = methodMap[paymentMethod] || paymentMethod;
       const amountValue = Number(finalAmount);
       
       const paymentData = {
@@ -169,12 +175,9 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
 
       if (userCredit) {
         const newUsedCredit = Math.max(0, parseFloat(userCredit.used_credit) - amountValue);
-
         const { error: creditError } = await supabase
           .from('user_credit_limit')
-          .update({
-            used_credit: newUsedCredit
-          })
+          .update({ used_credit: newUsedCredit })
           .eq('user_id', currentUser.user_id);
         
         if (creditError) {
@@ -234,12 +237,40 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
     return orderPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
   };
 
+  // Tanggal lunas = payment_date/created_at dari pembayaran terakhir
+  const getLunasDate = (orderId) => {
+    const orderPayments = payments[orderId] || [];
+    if (orderPayments.length === 0) return null;
+    const last = orderPayments[orderPayments.length - 1];
+    const raw = last.payment_date || last.created_at;
+    if (!raw) return null;
+    return new Date(raw).toLocaleDateString('id-ID', {
+      day: 'numeric', month: 'long', year: 'numeric'
+    });
+  };
+
+  // Format tanggal + jam per item pembayaran
+  const formatPaymentDate = (payment) => {
+    const raw = payment.payment_date || payment.created_at;
+    if (!raw) return '-';
+    return new Date(raw).toLocaleDateString('id-ID', {
+      day: 'numeric', month: 'short', year: 'numeric'
+    });
+  };
+
+  const formatMethodLabel = (method) => {
+    if (!method) return 'Pembayaran';
+    const map = { transfer: 'Transfer Bank', cash: 'Tunai', ewallet: 'E-Wallet', 'e-wallet': 'E-Wallet' };
+    return map[method] || method.charAt(0).toUpperCase() + method.slice(1);
+  };
+
   const renderOrderCard = (order, isPaid = false) => {
     const daysRemaining = getDaysRemaining(order.due_date);
     const isOverdue = daysRemaining < 0;
     const remaining = getRemainingAmount(order);
     const totalPaid = getTotalPaid(order);
     const isExpanded = expandedOrder === order.order_id;
+    const lunasDate = isPaid ? getLunasDate(order.order_id) : null;
 
     return (
       <div 
@@ -263,9 +294,18 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
                 </span>
               )}
             </div>
-            <p className="text-sm text-slate-600">
-              Tanggal: {new Date(order.created_at).toLocaleDateString('id-ID')}
-            </p>
+
+            {/* Tanggal: lunas jika sudah lunas, order jika belum */}
+            {isPaid ? (
+              <p className="text-sm font-medium text-green-700">
+                Tanggal Lunas: {lunasDate ?? '-'}
+              </p>
+            ) : (
+              <p className="text-sm text-slate-600">
+                Tanggal: {new Date(order.created_at).toLocaleDateString('id-ID')}
+              </p>
+            )}
+
             <p className="text-sm text-slate-600">
               Jatuh Tempo: {new Date(order.due_date).toLocaleDateString('id-ID')}
             </p>
@@ -316,15 +356,21 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
 
               {isExpanded && (
                 <div className="mt-3 p-3 bg-white rounded-lg border border-green-200">
-                  <h4 className="font-semibold text-sm mb-2">Detail Pembayaran:</h4>
-                  <div className="space-y-2">
+                  <h4 className="font-semibold text-sm mb-3 text-slate-700">Detail Pembayaran:</h4>
+                  <div className="space-y-3">
                     {(payments[order.order_id] || []).map((payment, idx) => (
-                      <div key={idx} className="flex justify-between text-sm">
-                        <span className="text-slate-600">
-                          {payment.method ? payment.method.charAt(0).toUpperCase() + payment.method.slice(1) : 'Pembayaran'} #{idx + 1}
-                        </span>
-                        <span className="font-medium text-green-600">
-                          Rp {parseFloat(payment.amount).toLocaleString()}
+                      <div key={idx} className="flex flex-col gap-0.5 pb-2 border-b border-slate-100 last:border-0 last:pb-0">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-600 font-medium">
+                            {formatMethodLabel(payment.method)} #{idx + 1}
+                          </span>
+                          <span className="font-semibold text-green-600">
+                            Rp {parseFloat(payment.amount).toLocaleString()}
+                          </span>
+                        </div>
+                        {/* ── Tanggal tiap pembayaran ── */}
+                        <span className="text-xs text-slate-400">
+                          {formatPaymentDate(payment)}
                         </span>
                       </div>
                     ))}
@@ -496,9 +542,9 @@ export function BillingPage({ orders, currentUser, creditLimits, fetchOrders, fe
                   className="w-5 h-5 text-green-600 rounded cursor-pointer"
                 />
                 <label htmlFor="lunasiFull" className="flex-1 cursor-pointer">
-                  <p className="font-medium text-slate-800">Lunasi Hutang</p>
+                  <p className="font-medium text-slate-800">Lunasi Sisa Hutang</p>
                   <p className="text-sm text-slate-600">
-                    Rp {getRemainingAmount(selectedOrder).toLocaleString()}
+                    Bayar full Rp {getRemainingAmount(selectedOrder).toLocaleString()}
                   </p>
                 </label>
               </div>
